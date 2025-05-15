@@ -16,6 +16,7 @@ import {
 import { cn } from "@nextui-org/theme";
 import React, { useState, useRef, useEffect } from "react";
 import { title } from "@/components/primitives";
+import { assert } from "console";
 
 interface Chapter {
   title: string;
@@ -35,13 +36,42 @@ export default function Home() {
   ]);
   
   const [selectedFile, setSelectedFile] = useState("");
-  const [fileContent, setFileContent] = useState("");
   const [currentChapter, setCurrentChapter] = useState<Chapter | undefined>();
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const [editingContent, setEditingContent] = useState("");
-  const [chaptersIndex, setChaptersIndex] = useState(-1);
-  const [text, setText] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [openChapterMenu, setOpenChapterMenu] = useState<number | null>(null);
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openChapterMenu !== null) {
+        const target = event.target as HTMLElement;
+        const isOutsideMenu = !target.closest('.chapter-menu-button') && 
+                              !target.closest('.m-2');
+        
+        if (isOutsideMenu) {
+          setOpenChapterMenu(null);
+        }
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [openChapterMenu]);
+  
+  const toggleChapterMenu = (index: number, e: React.MouseEvent) => {
+    e.stopPropagation(); 
+    if (openChapterMenu === index) {
+      setOpenChapterMenu(null);
+    } else {
+      setOpenChapterMenu(index);
+      console.log("hry",index,openChapterMenu)
+
+    }
+  };
+
+ 
   const insertChapterSplit = () => {
     console.log(textareaRef)
     if (!textareaRef.current) return;
@@ -111,7 +141,52 @@ export default function Home() {
     setEditingContent(updatedCurrentChapter.content)
     setCurrentChapter(updatedCurrentChapter)
   }
+  const combineWithNextChapter = (index: number) => {
+    // Check if there is a next chapter
+    console.log(currentChapter, chapters[index])
+    if (index >= chapters.length - 1 || currentChapter != chapters[index]) return;
     
+    const nextChapter = chapters[index + 1];
+    
+    const combinedContent = `${currentChapter.content}\n${nextChapter.content}`;
+    
+    // Update the current chapter with new content
+    const updatedChapter = {
+      ...currentChapter,
+      content: combinedContent,
+      isSelected: true
+    };
+    
+    const updatedChapters = [
+      ...chapters.slice(0, index),
+      updatedChapter,
+      ...chapters.slice(index + 2)
+    ];
+    
+    const reIndexedChapters = updatedChapters.map((ch, i) => ({
+      ...ch,
+      title: `Chapter ${i+1}`,
+      index: i,
+      isSelected: i === index
+    }));
+    
+    setChapters(reIndexedChapters);
+    setCurrentChapter(updatedChapter);
+    setEditingContent(combinedContent);
+    
+    setOpenChapterMenu(null);
+  };
+  
+  const handleChapterAction = (action: string, index: number) => {
+    switch (action) {
+      case "combine":
+        combineWithNextChapter(index);
+        break;
+      // Add other actions here as needed
+      default:
+        break;
+    }
+  };
   const handleChapterSelect = (index: number) => {
     let current = null
     const updatedChapters = chapters.map((chapter, i) => ({
@@ -119,10 +194,11 @@ export default function Home() {
       isSelected:false,
     }));
     updatedChapters[index].isSelected = true
-    
     setCurrentChapter(updatedChapters[index])
     setChapters(updatedChapters);
     setEditingContent(updatedChapters[index].content);
+    setOpenChapterMenu(null);
+
   };
   const parseChapters = (content: string): Chapter[] => {
     // Different patterns for chapter detection
@@ -156,7 +232,7 @@ export default function Home() {
         chaptersArray.push({
           title: chapterTitle,
           content: "",
-          isSelected: index === 0, 
+          isSelected: false, 
           index:0,
         });
         
@@ -173,7 +249,7 @@ export default function Home() {
       chaptersArray = [{
         title: `Chapter 1`,
         content: content,
-        isSelected: true,
+        isSelected: false,
         index:0
       }];
     }
@@ -212,6 +288,8 @@ export default function Home() {
         // Set the editing content to the first chapter
         if (parsedChapters.length > 0) {
           setEditingContent(parsedChapters[0].content);
+          setCurrentChapter(parsedChapters[0]);
+
         }
       } catch (error) {
         console.error('Error fetching file:', error);
@@ -281,6 +359,36 @@ export default function Home() {
                           {chapter.title}
                         </p>
                       </div>
+                      <Button 
+                        isIconOnly 
+                        size="sm" 
+                        variant="light"
+                        className="chapter-menu-button"
+                        onClick={
+                          (e) => {
+                            handleChapterSelect(index),
+                            toggleChapterMenu(index, e)
+                          }
+                        }
+                      >
+                        <Icon icon="mdi:dots-vertical" />
+                      </Button>
+                      {openChapterMenu === index && chapter.isSelected && (
+                        <div 
+                          className="absolute right-0 top-8 z-50 bg-white dark:bg-gray-800 shadow-lg rounded-md overflow-hidden"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Button
+                            className="m-2"
+                            size="sm"
+                            color="secondary"
+                            isDisabled={index >= chapters.length - 1}
+                            onClick={() => combineWithNextChapter(index)}
+                          >
+                            Combine with next chapter
+                          </Button>
+                        </div>
+                      )}
                     </CardHeader>
 
                     <Divider />
@@ -318,7 +426,7 @@ export default function Home() {
                       width={24}
                     />
                   </Button>
-                  <h4 className="text-md">Chapter 1 - Chapter 1 title</h4>
+                  <h4 className="text-md">Chapter {currentChapter?.title}</h4>
                 </div>
               </header>
               <div className="w-full flex-1 flex-col min-w-[400px]">
